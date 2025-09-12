@@ -52,5 +52,9 @@ void multi_thread_test() {
 int main() {
     // simple_test();
     multi_thread_test();
+#if (ASYNC_LOG)
+    fflush_async_log();
+#endif
+    log_buffer_debug_info();
     return 0;
 }

@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <sched.h>
 
 #include "../include/dlog.h"
 
@@ -245,6 +246,12 @@ static volatile int async_thread_started = 0;
 static pthread_t thread_id;
 void *async_log_thread_func(void* arg) {
     (void)arg;  // Explicitly mark as unused
+    // 绑定到CPU 0
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(0, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+
     DLOG_DEBUG_PRINT("Async log thread started\n");
     while (async_thread_started || log_head->prev != log_tail) {
         pthread_mutex_lock(&log_mutex);

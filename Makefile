@@ -16,7 +16,7 @@ LIB_VERSION := 1.0.0
 
 # Compiler settings
 CC      := gcc
-CFLAGS  := -g -Wall -Wextra -Iinclude -fPIC
+CFLAGS  := -g -Wall -Wextra -Iinclude -fPIC -D_GNU_SOURCE
 LDFLAGS := -Wl,-rpath,'./'
 LDLIBS  := 
 

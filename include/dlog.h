@@ -10,7 +10,7 @@
 #define MAX_BUFFER 4096
 // 是否使用异步日志
 #define ASYNC_LOG 0  // 0-同步日志，1-异步日志
-// 日志内存池大小
+// 日志内存池大小（同步时建议和线程个数一致；异步时尽量大一点）
 #define LOG_BUFFER_POOL_SIZE 500
 
 // 是否启用调试日志，启用后会打印更多内部状态到stderr

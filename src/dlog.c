@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <sched.h>
+#include <errno.h>
 
 #include "../include/dlog.h"
 
@@ -19,6 +20,7 @@
 /* 时间格式 */
 #define TIME_STRING_BUFFER_SIZE 32
 #define TIME_FORMAT "%Y-%m-%d %H:%M:%S"
+#define TIME_FORMAT_PLAIN "%Y%m%d_%H%M%S"
 #define MILLISECOND_FORMAT ".%03ld"
 /* 初始容量和增长因子 */
 #define INITIAL_LOGGER_CAPACITY 10
@@ -33,6 +35,7 @@ typedef struct {
     log_type type;
     char* filename;
     FILE* file;
+    pthread_mutex_t filemutex;
 } logger_t;
 
 /* Logger control structure */
@@ -121,10 +124,47 @@ static const char* get_time_string(char* buffer) {
     return buffer;
 }
 
+static const char* get_time_string_plain(char* buffer) {
+    struct timeval tv;
+    struct tm tm_info;
+
+    gettimeofday(&tv, NULL);
+    localtime_r(&tv.tv_sec, &tm_info);
+    strftime(buffer, TIME_STRING_BUFFER_SIZE, TIME_FORMAT_PLAIN, &tm_info);
+    return buffer;
+}
+
 static void log_to_file(logger_t* logger, uint8_t level, const char* time_str, const char* message) {
     if (!logger->file) return;
+    pthread_mutex_lock(&logger->filemutex);
     fprintf(logger->file, "%s %s %s\n", time_str, get_level_str(level), message);
     fflush(logger->file);
+    // 日志滚动
+    long pos = ftell(logger->file);
+    if (pos < 0) {
+        DLOG_ERROR_PRINT("Error getting file position for log file: %s\n", logger->filename);
+        pthread_mutex_unlock(&logger->filemutex);
+        return;
+    }
+    if (pos <= MAX_LOG_FILE_SIZE) { // 10MB
+        pthread_mutex_unlock(&logger->filemutex);
+        return;
+    } else {
+        fclose(logger->file);
+        char backup_filename[DEFAULT_FILEPATH_SIZE];
+        char time_str[TIME_STRING_BUFFER_SIZE];
+        get_time_string_plain(time_str);
+        snprintf(backup_filename, sizeof(backup_filename), "%s.%s", logger->filename, time_str);
+        if (rename(logger->filename, backup_filename) != 0) {
+            DLOG_ERROR_PRINT("Failed to rename log file: %s -> %s (errno: %d)\n",
+                    logger->filename, backup_filename, errno);
+        }
+        logger->file = fopen(logger->filename, "a+");
+        if (!logger->file) {
+            DLOG_ERROR_PRINT("Error reopening log file: %s\n", logger->filename);
+        }
+    }
+    pthread_mutex_unlock(&logger->filemutex);
 }
 
 static void log_to_screen(uint8_t level, const char* time_str, const char* message) {
@@ -299,6 +339,7 @@ logger_t* logger_create(const char* logger_name, log_level level, log_type type,
             free(log);
             return NULL;
         }
+        pthread_mutex_init(&log->filemutex, NULL);
     } else {
         log->file = NULL;
     }
@@ -309,6 +350,10 @@ logger_t* logger_create(const char* logger_name, log_level level, log_type type,
 void logger_free(logger_t* logger) {
     if (logger) {
         free(logger->filename);
+        if (logger->file) {
+            fclose(logger->file);
+            pthread_mutex_destroy(&logger->filemutex);
+        }
         free(logger);
     }
 }
@@ -477,3 +522,24 @@ void fflush_async_log() {
     }
 }
 #endif
+
+// lib 析构函数
+__attribute__((destructor))
+static void log_library_destructor() {
+#if (ASYNC_LOG)
+    fflush_async_log();
+#endif
+    logger_ctl_free();
+    // 释放日志缓冲区池
+    for (int i = 0; i < LOG_BUFFER_POOL_SIZE; i++){ 
+        if (pool[i].meta) {
+            free(pool[i].time_str);
+            free(pool[i].message);
+            free(pool[i].meta);
+            pool[i].meta = NULL;
+            pool[i].time_str = NULL;
+            pool[i].message = NULL;
+        }
+    }
+    pthread_mutex_destroy(&buffer_pool_mutex);
+}

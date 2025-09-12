@@ -12,6 +12,8 @@
 #define ASYNC_LOG 0  // 0-同步日志，1-异步日志
 // 日志内存池大小（同步时建议和线程个数一致；异步时尽量大一点）
 #define LOG_BUFFER_POOL_SIZE 500
+// 日志文件最大大小，超过则重命名
+#define MAX_LOG_FILE_SIZE (10 * 1024 * 1024) // 10MB
 
 // 是否启用调试日志，启用后会打印更多内部状态到stderr
 // #define DLOG_DEBUG
